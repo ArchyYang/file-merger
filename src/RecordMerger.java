@@ -1,12 +1,11 @@
+import Builder.BuilderFactory;
 import Parser.ParserFactory;
 import Parser.Parser;
-import Parser.CSVParser;
+import Builder.Builder;
+
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +17,6 @@ public class RecordMerger {
 	public static final String FILENAME_COMBINED = "combined.csv";
 	public static final String DATA_DIR = "data/";
 	public static final String ID_HEADER = "ID";
-	public static final String PLACEHOLDER = "";
 
 	static
 	{
@@ -26,6 +24,8 @@ public class RecordMerger {
 		{
 			Class.forName("Parser.CSVParser");
 			Class.forName("Parser.HTMLParser");
+			Class.forName("Parser.XMLParser");
+			Class.forName("Builder.CSVBuilder");
 		}
 		catch (ClassNotFoundException any)
 		{
@@ -34,7 +34,10 @@ public class RecordMerger {
 	}
 
 	/**
-	 * Entry point of this test.
+	 *
+	 * Edit Run Configurations in IDE with input file names in program arguments.
+	 *
+	 * input files should be put under project/data. The merged file will also go under project/data.
 	 *
 	 * @param args command line arguments: first.html and second.csv.
 	 * @throws Exception bad things had happened.
@@ -55,83 +58,96 @@ public class RecordMerger {
 			}
 			parsers.add(parser);
 		}
+		/**
+		 *  Store id to all column values mapping
+		 */
 		Map<String, List> table = new HashMap<>();
+
+		/**
+		 *  Store all non-duplicate headers
+		 */
 		Set<String> headerSet = new LinkedHashSet<>();
+
+		/**
+		 *  Store old headers index to value mapping
+		 */
 		Map<String, Integer> headerIndexMap = new HashMap<>();
+
+		// Loop all parsers. One parser points to one file.
 		for (Parser parser : parsers) {
-			Map<String, List> rowsMap = new HashMap<>();
 			List<String> headers = parser.readNext();
+			// Skip the file without headers.
 			if (headers == null) {
 				continue;
 			}
+			// find ID header index in header list and filter out duplicates from header list.
 			int idIndex = headers.indexOf(ID_HEADER);
-			List<String> newHeaders = headers.stream().filter(header -> !headerSet.contains(header)).collect(Collectors.toList());;
+			List<String> newHeaders = headers.stream().filter(header -> !headerSet.contains(header)).collect(Collectors.toList());
+
+			// read line by line, or row by row in html file.
 			List<String> line;
 			while ((line = parser.readNext()) != null) {
 				String id = line.get(idIndex);
-				List<String> filteredLine = new ArrayList<>();
+				// For incoming new IDs, create a list of empty strings.
+				// For incoming existing IDs, get a existing column values.
+				List<String> placeholders = Utils.getEmptyStringsList(headerSet.size());
+				List<String> existingLine = table.get(id);
+				existingLine = existingLine == null ? placeholders : existingLine;
 
-				// Filter out duplicate and id columns
+				// filter out duplicate headers line values
+				List<String> filteredLine = new ArrayList<>();
 				for (int i = 0; i < line.size(); i++) {
 					String currentHeader = headers.get(i);
 					if (!headerSet.contains(currentHeader)){
 						filteredLine.add(line.get(i));
 					}
 					else {
-						List<String> row = rowsMap.get(id);
-						int currentColIndex = headerIndexMap.get(currentHeader);
-						if (row != null && row.get(currentColIndex).isEmpty()) {
-							row.set(currentColIndex, line.get(i));
+						// if the duplicate header has empty string column value, update the new value.
+						int index = headerIndexMap.get(currentHeader);
+						if (existingLine.get(index) == Utils.PLACEHOLDER) {
+							existingLine.set(index, line.get(i));
 						}
 					}
 				}
-				// update row values based on id
-				rowsMap.put(id, filteredLine);
-			}
 
-			//create a list of empty str as placeholder for Parsed ID
-			List<String> emptyStrings = new ArrayList<>();
-			for (int i = 0; i < newHeaders.size(); i++) {
-				headerIndexMap.put(newHeaders.get(i), headerSet.size()+i);
-				emptyStrings.add(PLACEHOLDER);
-			}
-
-			int existRowSize = 0;
-			Set<String> keys = table.keySet();
-			for (String key : keys) {
-				List row = table.get(key);
-				existRowSize = row.size();
-				if (rowsMap.containsKey(key)) {
-					row.addAll(rowsMap.get(key));
-					table.put(key, row);
-					rowsMap.remove(key);
+				// merge new line and existing line by id.
+				if (existingLine != null) {
+					existingLine.addAll(filteredLine);
 				}
 				else {
-					row.addAll(emptyStrings);
+					existingLine = filteredLine;
+				}
+				table.put(id, existingLine);
+			}
+
+			// update new headers index to value mapping.
+			for (int i = 0; i < newHeaders.size(); i++) {
+				headerIndexMap.put(newHeaders.get(i), headerSet.size()+i);
+			}
+			// update columns set
+			headerSet.addAll(newHeaders);
+
+			// put empty strings for old ids that does not have new column values.
+			List<String> placeholders = Utils.getEmptyStringsList(newHeaders.size());
+			for (String key : table.keySet()) {
+				List<String> row = table.get(key);
+				if (row.size() <  headerSet.size()) {
+					row.addAll(placeholders);
 					table.put(key, row);
 				}
 			}
-
-			//create a list of empty str as placeholder
-			emptyStrings = new ArrayList<>();
-			for (int i = 0; i < existRowSize; i++) {
-				emptyStrings.add(PLACEHOLDER);
-			}
-			keys = rowsMap.keySet();
-			for (String key : keys) {
-				List<String> row = new ArrayList<>();
-				row.addAll(emptyStrings);
-				row.addAll(rowsMap.get(key));
-				table.put(key, row);
-			}
-
-			// update columns
-			headerSet.addAll(newHeaders);
-
 			parser.closeReader();
 		}
 		System.out.println(table);
 		System.out.println(headerSet);
+
+		Builder builder = BuilderFactory.createBuilder(DATA_DIR+FILENAME_COMBINED);
+		builder.writeNext(headerSet);
+		List<String> sortedKeys = Utils.getSortedMapKeys(table);
+		for (String key : sortedKeys) {
+			builder.writeNext(table.get(key));
+		}
+		builder.close();
 
 	}
 }

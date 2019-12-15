@@ -44,7 +44,7 @@ public class CSVParser extends Parser {
         try {
             String[] row = csvReader.readNext();
             if (row != null) {
-                return new ArrayList<String>(Arrays.asList(row));
+                return new ArrayList<>(Arrays.asList(row));
             }
         }
         catch (IOException e) {
@@ -55,16 +55,16 @@ public class CSVParser extends Parser {
 
     public void closeReader() {
         try {
-            reader.close();
-            csvReader.close();
+            if (reader != null) {
+                reader.close();
+            }
+            if (csvReader != null) {
+                csvReader.close();
+            }
         }
         catch (IOException e) {
             e.printStackTrace();
         }
-
-    }
-
-    public void getTitle() {
 
     }
 
