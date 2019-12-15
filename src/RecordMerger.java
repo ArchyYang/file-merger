@@ -4,12 +4,14 @@ import Parser.CSVParser;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class RecordMerger {
 
@@ -55,52 +57,42 @@ public class RecordMerger {
 		}
 		Map<String, List> table = new HashMap<>();
 		Set<String> headerSet = new LinkedHashSet<>();
+		Map<String, Integer> headerIndexMap = new HashMap<>();
 		for (Parser parser : parsers) {
 			Map<String, List> rowsMap = new HashMap<>();
 			List<String> headers = parser.readNext();
 			if (headers == null) {
 				continue;
 			}
-
-			int idIndex = -1;
+			int idIndex = headers.indexOf(ID_HEADER);
+			List<String> newHeaders = headers.stream().filter(header -> !headerSet.contains(header)).collect(Collectors.toList());;
 			List<String> line;
-			List<String> filteredHeader = new ArrayList<>(headers);
 			while ((line = parser.readNext()) != null) {
-				String id = null;
+				String id = line.get(idIndex);
 				List<String> filteredLine = new ArrayList<>();
 
 				// Filter out duplicate and id columns
 				for (int i = 0; i < line.size(); i++) {
-					if (id == null && ID_HEADER.equals(headers.get(i))) {
-						id = line.get(i);
-						filteredHeader.remove(ID_HEADER);
-						continue;
-					}
-					if (!headerSet.contains(headers.get(i))){
+					String currentHeader = headers.get(i);
+					if (!headerSet.contains(currentHeader)){
 						filteredLine.add(line.get(i));
 					}
 					else {
-						filteredHeader.remove(headers.get(i));
+						List<String> row = rowsMap.get(id);
+						int currentColIndex = headerIndexMap.get(currentHeader);
+						if (row != null && row.get(currentColIndex).isEmpty()) {
+							row.set(currentColIndex, line.get(i));
+						}
 					}
 				}
-
 				// update row values based on id
 				rowsMap.put(id, filteredLine);
-
-
-				/*if (rowsMap.containsKey(id)) {
-					List existingVals = rowsMap.get(id);
-					existingVals.addAll(filteredLine);
-					rowsMap.put(id, existingVals);
-				} else {
-					rowsMap.put(id, filteredLine);
-				}*/
-
 			}
 
 			//create a list of empty str as placeholder for Parsed ID
 			List<String> emptyStrings = new ArrayList<>();
-			for (int i = 0; i < filteredHeader.size(); i++) {
+			for (int i = 0; i < newHeaders.size(); i++) {
+				headerIndexMap.put(newHeaders.get(i), headerSet.size()+i);
 				emptyStrings.add(PLACEHOLDER);
 			}
 
@@ -134,7 +126,8 @@ public class RecordMerger {
 			}
 
 			// update columns
-			headerSet.addAll(filteredHeader);
+			headerSet.addAll(newHeaders);
+
 			parser.closeReader();
 		}
 		System.out.println(table);
