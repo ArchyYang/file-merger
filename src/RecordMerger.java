@@ -138,8 +138,6 @@ public class RecordMerger {
 			}
 			parser.closeReader();
 		}
-		System.out.println(table);
-		System.out.println(headerSet);
 
 		Builder builder = BuilderFactory.createBuilder(DATA_DIR+FILENAME_COMBINED);
 		builder.writeNext(headerSet);
