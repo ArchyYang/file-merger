@@ -18,6 +18,6 @@ public class ParserFactory {
         if (parser != null ) {
             return parser.createParser(fileName);
         }
-        return parser;
+        return null;
     }
 }

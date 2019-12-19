@@ -45,7 +45,7 @@ public class RecordMerger {
 	public static void main(final String[] args) throws Exception {
 
 		if (args.length == 0) {
-			System.err.println("Usage: java RecordMerger file1 [ file2 [...] ]");
+			System.err.println("Usage: java RecordMerger file1 file2 ...");
 			System.exit(1);
 		}
 
